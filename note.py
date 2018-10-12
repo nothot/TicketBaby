@@ -7,7 +7,7 @@
     """
     **********************  余票查询    **********************
     余票查询地址：
-        https://kyfw.12306.cn/otn/leftTicket/queryO
+        https://kyfw.12306.cn/otn/leftTicket/queryO     GET
     参数： 
         leftTicketDTO.train_date=2018-08-06，
         leftTicketDTO.from_station={}，
@@ -37,7 +37,30 @@
         商务座 32
         动卧 33
         
-    **********************  登录    **********************
-
+    **********************  登录   **********************
+    第一步：获取验证码
+    
+    获取验证码图片地址：
+        https://kyfw.12306.cn/passport/captcha/captcha-image?login_site=E&module=login&rand=sjrand&0.5160082611736014   GET
+    
+    验证码验证地址：
+        https://kyfw.12306.cn/passport/captcha/captcha-check    POST
+    参数：
+        answer=110,39,116,116
+        login_site=E
+        rand=sjrand
+    响应：
+        result_code=4 校验成功
+        
+    第二步：登录
+    
+    登录地址：
+        https://kyfw.12306.cn/passport/web/login    POST
+    参数：
+        username=****
+        password=****
+        appid=otn
+    响应：
+        result_code=0 成功
     """
 }
