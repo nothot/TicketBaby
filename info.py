@@ -3,6 +3,10 @@
 
 # @Author  : Dream
 
-date = "2018-10-24"
-from_station = "LON"
-to_station = "SHH"
+date = "2018-11-01"
+from_station = ""
+to_station = ""
+passenger_name = ""
+user_name = "@qq.com"
+password = ""
+
