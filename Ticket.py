@@ -7,6 +7,7 @@ import requests
 import urllib.parse
 import sys
 import time
+import random
 import re
 import info
 from PIL import Image
@@ -44,6 +45,15 @@ class Tickets(object):
         self.passenger_ticket_str = ""
         self.old_passenger_str = ""
         self.order_id = ""
+        self.seat_code = {
+            "硬座": "1",
+            "软座": "2",
+            "硬卧": "3",
+            "软卧": "4",
+            "二等座": "O",
+            "一等座": "M",
+            "商务座": "9"
+        }
 
     def get_stations(self):
         print("获取站名编码...")
@@ -63,8 +73,8 @@ class Tickets(object):
         query_url = 'https://kyfw.12306.cn/otn/leftTicket/queryO'
         param = {
             'leftTicketDTO.train_date': train_date,
-            'leftTicketDTO.from_station': from_station,
-            'leftTicketDTO.to_station': to_station,
+            'leftTicketDTO.from_station': self.station_map[from_station],
+            'leftTicketDTO.to_station': self.station_map[to_station],
             "purpose_codes":"ADULT"
         }
         response = self.session.get(url=query_url, params=param)
@@ -73,7 +83,7 @@ class Tickets(object):
             train_list = response.json()["data"]["result"]
             for train in train_list:
                 print("车次 {}：{}".format(train.split("|")[3], train))
-            train_info = train_list[1].split("|")
+            train_info = train_list[7].split("|")
             self.secret_str = urllib.parse.unquote(train_info[0])
             self.train_no = train_info[2]
             self.train_code = train_info[3]
@@ -130,9 +140,10 @@ class Tickets(object):
         self.login_captcha_check()
         print("用户名密码登录...")
         login_url = "https://kyfw.12306.cn/passport/web/login"
+        password = input("输入登录密码：")
         data = {
             "username": info.user_name,
-            "password": info.password,
+            "password": password,
             "appid": "otn"
         }
         response = self.session.post(login_url, data)
@@ -247,6 +258,12 @@ class Tickets(object):
     def confirm_passengers(self):
         pass
 
+    def get_order_captcha(self):
+        captcha_url = "https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp&{}".format(random.random())
+        picture = self.session.get(captcha_url).content
+        with open("order_captcha.jpg", "wb") as f:
+            f.write(picture)
+
     def check_order_info(self):
         retry_count = 0
         while True:
@@ -268,8 +285,7 @@ class Tickets(object):
                         "mobile_no": p["mobile_no"]
                     }
             print("选择乘客：{}".format(passenger_info["passenger_name"]))
-            seat_type = "1"
-            self.passenger_ticket_str = "%s,%s,%s,%s,%s,%s,%s,N" % (seat_type,
+            self.passenger_ticket_str = "%s,%s,%s,%s,%s,%s,%s,N" % (self.seat_code[info.seat_type],
                                                                passenger_info["passenger_flag"],
                                                                passenger_info["passenger_type"],
                                                                passenger_info["passenger_name"],
@@ -307,7 +323,7 @@ class Tickets(object):
             "train_date": time.strftime("%a %b %d %Y %H:%M:%S", time.strptime(info.date, "%Y-%m-%d")) + " GMT+0800 (中国标准时间)",
             "train_no": self.train_no,
             "stationTrainCode": self.train_code,
-            "seatType": "1",
+            "seatType": self.seat_code[info.seat_type],
             "fromStationTelecode": self.station_map[info.from_station],
             "toStationTelecode": self.station_map[info.to_station],
             "leftTicket": self.left_tickets,
@@ -424,9 +440,11 @@ class Tickets(object):
         self.query_order_wait_time()
         self.query_order_result()
 
+    def grab(self):
+        pass
 
 
 ticket = Tickets()
 ticket.get_stations()
-ticket.query(ticket.station_map[info.from_station], ticket.station_map[info.to_station], info.date)
-# ticket.book()
+ticket.query(info.from_station, info.to_station, info.date)
+ticket.book()

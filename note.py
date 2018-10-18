@@ -159,7 +159,7 @@
         flag=true 已登录
         
         
-    第二步：提交订单基本信息
+    第二步：提交订单请求（即发起预定）
     ------------------------------------------------------------
     地址：
         https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest
@@ -175,7 +175,7 @@
         query_to_station_name       = 北京
         undefined                   = ''
     响应：
-        status=true     订单基本信息提交成功
+        status=true     订单提交请求成功
         
         
     第三步：获取提交订单需要的Token和Key
@@ -205,7 +205,22 @@
         normal_passengers   乘客列表
     
     
-    第五步：检查订单信息
+    第五步：获取提交订单验证码图片
+    ------------------------------------------------------------
+    地址：
+        https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp&0.6692619212397362
+    方式：
+        GET
+    参数：
+        见URL，最后一个是随机数
+    响应：
+        验证码图片
+    备注：
+        该步并非必要，在购票紧张时确认订单前会弹验证码，其他时候一般是不弹得，是否要弹在下个请求检查订单信息时通过返回字段判断
+        checkOrderInfo接口返回ifShowPassCode='Y'就要弹验证码，因此这里还是要将验证码图片保存下来，在下一步判断是否弹出
+    
+
+    第六步：检查订单信息
     ------------------------------------------------------------
     地址：
         https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo
@@ -223,9 +238,10 @@
         REPEAT_SUBMIT_TOKEN             = ad895d8d3d6c334ae835724b8f9a4830      Token
     响应：
         status=true     成功
+        ifShowPassCode='Y'  需要弹验证码
         
         
-    第六步：确认坐席
+    第七步：确认坐席
     ------------------------------------------------------------
     地址：
         https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount
@@ -247,7 +263,7 @@
         status=true     成功
         
     
-    第七步：确认完整订单信息，提交进入订单队列
+    第八步：确认完整订单信息，提交进入订单队列
     ------------------------------------------------------------
     地址：
         https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue
@@ -272,7 +288,7 @@
         submitStatus=true   订单提交成功
         
         
-    第八步：查询当前排队剩余时间
+    第九步：查询当前排队剩余时间
     ------------------------------------------------------------
     地址：
         https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime
@@ -289,7 +305,7 @@
         orderId                         订单号，用于查询订单结果，waitTime=-1处理完毕才会生成
         
         
-    第九步：查询订单最终结果
+    第十步：查询订单最终结果
     ------------------------------------------------------------
     地址：
         https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue
@@ -307,6 +323,13 @@
 
 {
     '''
-    
+    坐席类型：
+        硬座      1
+        软座      2
+        硬卧      3
+        软卧      4
+        二等座     O
+        一等座     M
+        商务座     9
     '''
 }
