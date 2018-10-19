@@ -45,6 +45,7 @@ class Tickets(object):
         self.passenger_ticket_str = ""
         self.old_passenger_str = ""
         self.order_id = ""
+        self.select_seat = ""
         self.seat_code = {
             "硬座": "1",
             "软座": "2",
@@ -54,6 +55,16 @@ class Tickets(object):
             "一等座": "M",
             "商务座": "9"
         }
+        self.seat_num = {
+            "硬座": 29,
+            "软座": 24,
+            "硬卧": 28,
+            "软卧": 23,
+            "二等座": 30,
+            "一等座": 31,
+            "商务座": 32
+        }
+
 
     def get_stations(self):
         print("获取站名编码...")
@@ -81,14 +92,20 @@ class Tickets(object):
         if response.status_code == 200:
             print("余票查询成功")
             train_list = response.json()["data"]["result"]
-            for train in train_list:
-                print("车次 {}：{}".format(train.split("|")[3], train))
-            train_info = train_list[7].split("|")
-            self.secret_str = urllib.parse.unquote(train_info[0])
-            self.train_no = train_info[2]
-            self.train_code = train_info[3]
-            self.left_tickets = train_info[12]
-            self.train_location = train_info[15]
+            print('车次 {}'.format(train_list))
+            select_train, select_seat = self.filter(train_list)
+            if select_train == '' and select_seat == '':
+                print('无票，系统退出...')
+                sys.exit()
+            else:
+                train_info = select_train.split("|")
+                print('有票，{}'.format(train_info))
+                self.secret_str = urllib.parse.unquote(train_info[0])
+                self.train_no = train_info[2]
+                self.train_code = train_info[3]
+                self.left_tickets = train_info[12]
+                self.train_location = train_info[15]
+                self.select_seat = select_seat
 
     def login_captcha_check(self):
         retry_count = 0
@@ -143,7 +160,7 @@ class Tickets(object):
         password = input("输入登录密码：")
         data = {
             "username": info.user_name,
-            "password": password,
+            "password": info.password,
             "appid": "otn"
         }
         response = self.session.post(login_url, data)
@@ -273,29 +290,34 @@ class Tickets(object):
 
             print("核对订单信息...")
             check_order_url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
-            passenger_info = {}
-            for p in self.passenger_list:
-                if info.passenger_name == p["passenger_name"]:
-                    passenger_info = {
-                        "passenger_flag": p["passenger_flag"],
-                        "passenger_type": p["passenger_type"],
-                        "passenger_name": p["passenger_name"],
-                        "passenger_id_type_code": p["passenger_id_type_code"],
-                        "passenger_id_no": p["passenger_id_no"],
-                        "mobile_no": p["mobile_no"]
-                    }
-            print("选择乘客：{}".format(passenger_info["passenger_name"]))
-            self.passenger_ticket_str = "%s,%s,%s,%s,%s,%s,%s,N" % (self.seat_code[info.seat_type],
-                                                               passenger_info["passenger_flag"],
-                                                               passenger_info["passenger_type"],
-                                                               passenger_info["passenger_name"],
-                                                               passenger_info["passenger_id_type_code"],
-                                                               passenger_info["passenger_id_no"],
-                                                               passenger_info["mobile_no"])
-            self.old_passenger_str = "%s,%s,%s,%s_" % (passenger_info["passenger_name"],
-                                                  passenger_info["passenger_id_type_code"],
-                                                  passenger_info["passenger_id_no"],
-                                                  passenger_info["passenger_type"])
+            passengers = []
+            for select_name in info.passenger_names:
+                for p in self.passenger_list:
+                    if select_name == p["passenger_name"]:
+                        passenger_info = {
+                            "passenger_flag": p["passenger_flag"],
+                            "passenger_type": p["passenger_type"],
+                            "passenger_name": p["passenger_name"],
+                            "passenger_id_type_code": p["passenger_id_type_code"],
+                            "passenger_id_no": p["passenger_id_no"],
+                            "mobile_no": p["mobile_no"]
+                        }
+                        passengers.append(passenger_info)
+
+            print("选择乘客：{}".format(passengers))
+            for passenger_info in passengers:
+                self.passenger_ticket_str += "%s,%s,%s,%s,%s,%s,%s,N_" % (self.seat_code[info.seat_type[0]],
+                                                                   passenger_info["passenger_flag"],
+                                                                   passenger_info["passenger_type"],
+                                                                   passenger_info["passenger_name"],
+                                                                   passenger_info["passenger_id_type_code"],
+                                                                   passenger_info["passenger_id_no"],
+                                                                   passenger_info["mobile_no"])
+                self.old_passenger_str += "%s,%s,%s,%s_" % (passenger_info["passenger_name"],
+                                                      passenger_info["passenger_id_type_code"],
+                                                      passenger_info["passenger_id_no"],
+                                                      passenger_info["passenger_type"])
+            self.passenger_ticket_str = self.passenger_ticket_str[0:-1]
             data = {
                 "cancel_flag":"2",
                 "bed_level_order_num": "000000000000000000000000000000",
@@ -323,7 +345,7 @@ class Tickets(object):
             "train_date": time.strftime("%a %b %d %Y %H:%M:%S", time.strptime(info.date, "%Y-%m-%d")) + " GMT+0800 (中国标准时间)",
             "train_no": self.train_no,
             "stationTrainCode": self.train_code,
-            "seatType": self.seat_code[info.seat_type],
+            "seatType": self.seat_code[info.seat_type[0]],
             "fromStationTelecode": self.station_map[info.from_station],
             "toStationTelecode": self.station_map[info.to_station],
             "leftTicket": self.left_tickets,
@@ -436,15 +458,26 @@ class Tickets(object):
         self.get_passenger_list()
         self.check_order_info()
         self.get_queue_count()
-        self.confirm_order()
-        self.query_order_wait_time()
-        self.query_order_result()
+        # self.confirm_order()
+        # self.query_order_wait_time()
+        # self.query_order_result()
 
-    def grab(self):
-        pass
+    def filter(self, train_list):
+        for seat in info.seat_type:
+            for train in train_list:
+                train_info = train.split("|")
+                seat_info = train_info[self.seat_num[seat]]
+                if seat_info == '' or seat_info == '无':
+                    continue
+                else:
+                    if seat_info == '有':
+                        return train, seat
+                    else:
+                        return train, seat
+        return '', ''
 
 
 ticket = Tickets()
 ticket.get_stations()
 ticket.query(info.from_station, info.to_station, info.date)
-ticket.book()
+# ticket.book()
