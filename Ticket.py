@@ -34,17 +34,13 @@ class Tickets(object):
         }
         self.session.verify = False
         self.station_map = {}
-        self.secret_str = ""
         self.submit_token = ""
         self.key_check_is_change = ""
         self.passenger_list = []
-        self.train_no = ""
-        self.train_code = ""
-        self.left_tickets = ""
-        self.train_location = ""
         self.passenger_ticket_str = ""
         self.old_passenger_str = ""
         self.order_id = ""
+        self.select_train = []
         self.select_seat = ""
         self.seat_code = {
             "硬座": "1",
@@ -62,7 +58,9 @@ class Tickets(object):
             "软卧": 23,
             "二等座": 30,
             "一等座": 31,
-            "商务座": 32
+            "商务座": 32,
+            "动卧": 33,
+            "高级软卧": 21
         }
 
 
@@ -81,7 +79,7 @@ class Tickets(object):
     def query(self, from_station, to_station, train_date):
         print("查询余票...")
         print("出发站：{}   到达站：{}  乘车日期：{}".format(from_station, to_station, train_date))
-        query_url = 'https://kyfw.12306.cn/otn/leftTicket/queryO'
+        query_url = 'https://kyfw.12306.cn/otn/leftTicket/query'
         param = {
             'leftTicketDTO.train_date': train_date,
             'leftTicketDTO.from_station': self.station_map[from_station],
@@ -91,21 +89,19 @@ class Tickets(object):
         response = self.session.get(url=query_url, params=param)
         if response.status_code == 200:
             print("余票查询成功")
+            # print('info: {}'.format(response.json()))
             train_list = response.json()["data"]["result"]
-            print('车次 {}'.format(train_list))
+            # print('车次 {}'.format(train_list))
             select_train, select_seat = self.filter(train_list)
             if select_train == '' and select_seat == '':
-                print('无票，系统退出...')
-                sys.exit()
+                return False
             else:
-                train_info = select_train.split("|")
-                print('有票，{}'.format(train_info))
-                self.secret_str = urllib.parse.unquote(train_info[0])
-                self.train_no = train_info[2]
-                self.train_code = train_info[3]
-                self.left_tickets = train_info[12]
-                self.train_location = train_info[15]
+                train_info = select_train.split('|')
+                self.select_train = train_info
                 self.select_seat = select_seat
+                return True
+        else:
+            return False
 
     def login_captcha_check(self):
         retry_count = 0
@@ -160,7 +156,7 @@ class Tickets(object):
         password = input("输入登录密码：")
         data = {
             "username": info.user_name,
-            "password": info.password,
+            "password": password,
             "appid": "otn"
         }
         response = self.session.post(login_url, data)
@@ -224,9 +220,9 @@ class Tickets(object):
         print("提交订单请求...")
         submit_order_url = "https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest"
         data = {
-            "secretStr": self.secret_str,
+            "secretStr": urllib.parse.unquote(self.select_train[0]),
             "train_date": info.date,
-            "back_train_date": "2018-11-06",
+            "back_train_date": "2018-10-08",
             "tour_flag": "dc",
             "purpose_codes": "ADULT",
             "query_from_station_name": info.from_station,
@@ -306,7 +302,7 @@ class Tickets(object):
 
             print("选择乘客：{}".format(passengers))
             for passenger_info in passengers:
-                self.passenger_ticket_str += "%s,%s,%s,%s,%s,%s,%s,N_" % (self.seat_code[info.seat_type[0]],
+                self.passenger_ticket_str += "%s,%s,%s,%s,%s,%s,%s,N_" % (self.seat_code[info.seats[0]],
                                                                    passenger_info["passenger_flag"],
                                                                    passenger_info["passenger_type"],
                                                                    passenger_info["passenger_name"],
@@ -343,14 +339,14 @@ class Tickets(object):
         queue_count_url = "https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount"
         data = {
             "train_date": time.strftime("%a %b %d %Y %H:%M:%S", time.strptime(info.date, "%Y-%m-%d")) + " GMT+0800 (中国标准时间)",
-            "train_no": self.train_no,
-            "stationTrainCode": self.train_code,
-            "seatType": self.seat_code[info.seat_type[0]],
+            "train_no": self.select_train[2],
+            "stationTrainCode": self.select_train[3],
+            "seatType": self.seat_code[info.seats[0]],
             "fromStationTelecode": self.station_map[info.from_station],
             "toStationTelecode": self.station_map[info.to_station],
-            "leftTicket": self.left_tickets,
+            "leftTicket": self.select_train[12],
             "purpose_codes": "00",
-            "train_location": self.train_location,
+            "train_location": self.select_train[15],
             "_json_att": "",
             "REPEAT_SUBMIT_TOKEN": self.submit_token
         }
@@ -375,8 +371,8 @@ class Tickets(object):
                 "randCode": "",
                 "purpose_codes": "00",
                 "key_check_isChange": self.key_check_is_change,
-                "leftTicketStr": self.left_tickets,
-                "train_location": self.train_location,
+                "leftTicketStr": self.select_train[12],
+                "train_location": self.select_train[15],
                 "choose_seats": "",
                 "seatDetailType": "000",
                 "whatsSelect": "1",
@@ -463,7 +459,15 @@ class Tickets(object):
         # self.query_order_result()
 
     def filter(self, train_list):
-        for seat in info.seat_type:
+        def filter_train(train_str):
+            for train_num in info.trains:
+                if train_num in train_str:
+                    return True
+            return False
+        # 坐席优先
+        if not len(info.trains) == 0:
+            train_list = list(filter(filter_train, train_list))
+        for seat in info.seats:
             for train in train_list:
                 train_info = train.split("|")
                 seat_info = train_info[self.seat_num[seat]]
@@ -476,8 +480,23 @@ class Tickets(object):
                         return train, seat
         return '', ''
 
+    def grab(self):
+        retry_count = 0
+        while True:
+            if retry_count > 3:
+                print("重试达上限，系统退出...")
+                sys.exit()
+            if self.query(info.from_station, info.to_station, info.date):
+                print('当前有票,   车次 {}   坐席 {}'.format(self.select_train[3], self.select_seat))
+                # self.book()
+                break
+            else:
+                print('查询无票，开始重试...')
+                retry_count += 1
+                time.sleep(1)
+                continue
+
 
 ticket = Tickets()
 ticket.get_stations()
-ticket.query(info.from_station, info.to_station, info.date)
-# ticket.book()
+ticket.grab()

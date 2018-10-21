@@ -3,18 +3,19 @@
 
 # @Author  : Dream
 
-date = "2018-11-01"
+date = "2018-10-24"
 from_station = "上海"
 to_station = ""
 passenger_names = [
     ""
 ]
-
-trains = [
-    "K"
+seats = [
+    ""
 ]
-seat_type = [
-    "硬卧"
+
+# 车次非必选
+trains = [
+
 ]
 user_name = "@qq.com"
 password = ""
