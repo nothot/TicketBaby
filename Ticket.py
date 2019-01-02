@@ -64,7 +64,7 @@ class Tickets(object):
             "动卧": 33,
             "高级软卧": 21
         }
-        self.last_trains = []
+        self.last_train_dict = {}
 
     def get_stations(self):
         print("获取站名编码...")
@@ -90,6 +90,7 @@ class Tickets(object):
     def query(self, from_station, to_station, train_date):
         print("查询余票...")
         print("出发站：{}   到达站：{}  乘车日期：{}".format(from_station, to_station, train_date))
+        train_key = '{}|{}'.format(self.station_map[from_station], self.station_map[to_station])
         query_url = 'https://kyfw.12306.cn/otn/leftTicket/queryZ'
         param = {
             'leftTicketDTO.train_date': train_date,
@@ -104,13 +105,12 @@ class Tickets(object):
             print("余票查询成功")
             train_list = response.json()["data"]["result"]
             train_counts = len(train_list)
-            print('车次 {} 列，详细:'.format(train_counts))
-            print(train_list)
-            
+            print('车次 {} 列，所有指定车次查询结果:'.format(train_counts))
+
             select_train, select_seat = self.filter(train_list)
             if select_train == '' or select_seat == '':
                 # 查询无票，检查是否有新开列车符合条件
-                select_train, select_seat = self.check_new_trains(train_list)
+                select_train, select_seat = self.check_new_trains(train_list, train_key)
                 if select_train != '' and select_seat != '':
                     train_info = select_train.split('|')
                     self.select_train = train_info
@@ -125,18 +125,25 @@ class Tickets(object):
                 res = True
         else:
             res = False
-        self.last_trains = train_list
+        self.last_train_dict[train_key] = train_list
+        print(self.last_train_dict)
         return res
 
-    # def print_train_detail(self, train_info):
-    #     infos = train_info.split("|")
-    #     print("车次 {} {} 至 {} 硬卧 {} 软卧 {} 二等座 {} 一等座 {} 硬座 {} 软座 {}".format(infos[3], infos[6], infos[7], infos[28], infos[23], infos[30], infos[31], infos[29], infos[24]))
+    def print_train_detail(self, trains):
+        for train in trains:
+            infos = train.split("|")
+            print("车次 {} {} 至 {} 硬卧|{} 软卧|{} 二等座|{} 一等座|{} 硬座|{} 软座|{}".format(infos[3], self.station_map_reverse[infos[6]], self.station_map_reverse[infos[7]], infos[28], infos[23], infos[30], infos[31], infos[29], infos[24]))
 
-    def check_new_trains(self, train_list):
-        if len(self.last_trains) < len(train_list) and len(self.last_trains) != 0:
+    def check_new_trains(self, train_list, check_key):
+        has_key = check_key in self.last_train_dict.keys()
+        if not has_key:
+            return '', ''
+        old_trains = self.last_train_dict[check_key]
+        if len(old_trains) < len(train_list) and len(old_trains) != 0:
+            print('上次车次共{} 本次车次共{}'.format(len(old_trains), len(train_list)))
             print('指定车次无票，发现新开列车')
             old_train_nums = []
-            for train in self.last_trains:
+            for train in old_trains:
                 old_train_nums.append(train.split("|")[3])
             new_trains = []
             for new_train in train_list:
@@ -564,10 +571,10 @@ class Tickets(object):
 
     def further_filter(self, train_list):
         # 坐席优先
+        self.print_train_detail(train_list)
         for seat in info.seats:
             for train in train_list:
                 train_info = train.split("|")
-                print(train_info)
                 seat_info = train_info[self.seat_num[seat]]
                 if seat_info == '' or seat_info == '无' or seat_info == '0':
                     continue
