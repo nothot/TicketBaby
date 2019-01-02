@@ -126,13 +126,21 @@ class Tickets(object):
         else:
             res = False
         self.last_train_dict[train_key] = train_list
-        print(self.last_train_dict)
         return res
 
     def print_train_detail(self, trains):
         for train in trains:
             infos = train.split("|")
-            print("车次 {} {} 至 {} 硬卧|{} 软卧|{} 二等座|{} 一等座|{} 硬座|{} 软座|{}".format(infos[3], self.station_map_reverse[infos[6]], self.station_map_reverse[infos[7]], infos[28], infos[23], infos[30], infos[31], infos[29], infos[24]))
+            print("车次 %-10s %s 至 %-10s 硬卧|%-10s 软卧|%-10s 二等座|%-10s 一等座|%-10s 硬座|%-10s 软座|%-10s" % (
+                infos[3],
+                self.station_map_reverse[infos[6]],
+                self.station_map_reverse[infos[7]],
+                infos[28],
+                infos[23],
+                infos[30],
+                infos[31],
+                infos[29],
+                infos[24]))
 
     def check_new_trains(self, train_list, check_key):
         has_key = check_key in self.last_train_dict.keys()
@@ -466,7 +474,7 @@ class Tickets(object):
     def query_order_wait_time(self):
         print("查询剩余排队时间...")
         query_count = 1
-        while True:
+        while query_count < 10000:
             print("当前第{}次查询...".format(query_count))
             query_url = "https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime"
             data = {
@@ -485,12 +493,13 @@ class Tickets(object):
                     print("订单处理完毕")
                     break
                 elif wait_time == -2:
-                    print("取消次数太多，今日无法订票，系统退出...")
-                    sys.exit()
+                    print("取消次数太多，今日无法订票...")
+                    return False
                 else:
                     query_count += 1
                     time.sleep(1)
                     continue
+        return True
 
     def query_order_result(self):
         retry_count = 0
@@ -552,8 +561,10 @@ class Tickets(object):
         if not res:
             return res
 
-        self.query_order_wait_time()
-        self.query_order_result()
+        res = self.query_order_wait_time()
+        if not res:
+            return res
+        res = self.query_order_result()
 
         return res
 
