@@ -12,6 +12,7 @@ import re
 import info
 from PIL import Image
 from requests import urllib3
+import datetime
 
 
 class Tickets(object):
@@ -34,6 +35,7 @@ class Tickets(object):
         }
         self.session.verify = False
         self.station_map = {}
+        self.station_map_reverse = {}
         self.submit_token = ""
         self.key_check_is_change = ""
         self.passenger_list = []
@@ -62,7 +64,7 @@ class Tickets(object):
             "动卧": 33,
             "高级软卧": 21
         }
-
+        self.last_trains = []
 
     def get_stations(self):
         print("获取站名编码...")
@@ -75,11 +77,20 @@ class Tickets(object):
                 station_name = item.split('|')[1]
                 station_code = item.split('|')[2]
                 self.station_map[station_name] = station_code
+                self.station_map_reverse[station_code] = station_name
+
+    def query_tickets(self, from_station, to_station, train_date):
+        for from_s in from_station:
+            for to_s in to_station:
+                res = self.query(from_s, to_s, train_date)
+                if res:
+                    return True
+        return False
 
     def query(self, from_station, to_station, train_date):
         print("查询余票...")
         print("出发站：{}   到达站：{}  乘车日期：{}".format(from_station, to_station, train_date))
-        query_url = 'https://kyfw.12306.cn/otn/leftTicket/query'
+        query_url = 'https://kyfw.12306.cn/otn/leftTicket/queryZ'
         param = {
             'leftTicketDTO.train_date': train_date,
             'leftTicketDTO.from_station': self.station_map[from_station],
@@ -87,21 +98,64 @@ class Tickets(object):
             "purpose_codes":"ADULT"
         }
         response = self.session.get(url=query_url, params=param)
+        res = False
+        train_list = []
         if response.status_code == 200:
             print("余票查询成功")
-            # print('info: {}'.format(response.json()))
             train_list = response.json()["data"]["result"]
-            # print('车次 {}'.format(train_list))
+            train_counts = len(train_list)
+            print('车次 {} 列，详细:'.format(train_counts))
+            print(train_list)
+            
             select_train, select_seat = self.filter(train_list)
-            if select_train == '' and select_seat == '':
-                return False
+            if select_train == '' or select_seat == '':
+                # 查询无票，检查是否有新开列车符合条件
+                select_train, select_seat = self.check_new_trains(train_list)
+                if select_train != '' and select_seat != '':
+                    train_info = select_train.split('|')
+                    self.select_train = train_info
+                    self.select_seat = select_seat
+                    res = True
+                else:
+                    res = False
             else:
                 train_info = select_train.split('|')
                 self.select_train = train_info
                 self.select_seat = select_seat
-                return True
+                res = True
         else:
-            return False
+            res = False
+        self.last_trains = train_list
+        return res
+
+    # def print_train_detail(self, train_info):
+    #     infos = train_info.split("|")
+    #     print("车次 {} {} 至 {} 硬卧 {} 软卧 {} 二等座 {} 一等座 {} 硬座 {} 软座 {}".format(infos[3], infos[6], infos[7], infos[28], infos[23], infos[30], infos[31], infos[29], infos[24]))
+
+    def check_new_trains(self, train_list):
+        if len(self.last_trains) < len(train_list) and len(self.last_trains) != 0:
+            print('指定车次无票，发现新开列车')
+            old_train_nums = []
+            for train in self.last_trains:
+                old_train_nums.append(train.split("|")[3])
+            new_trains = []
+            for new_train in train_list:
+                if old_train_nums.count(new_train.split("|")[3]) > 0:
+                    continue
+                new_trains.append(new_train)
+
+            def filter_train(trains):
+                info_array = trains.split("|")
+                if info_array[8] > info.start_time and info_array[9] > info.arrive_time:
+                    return True
+                return False
+
+            if len(new_trains) > 0:
+                # 检查新车是否满足条件
+                new_trains = list(filter(filter_train, new_trains))
+            return self.further_filter(new_trains)
+        else:
+            return '', ''
 
     def login_captcha_check(self):
         retry_count = 0
@@ -153,10 +207,9 @@ class Tickets(object):
         self.login_captcha_check()
         print("用户名密码登录...")
         login_url = "https://kyfw.12306.cn/passport/web/login"
-        password = input("输入登录密码：")
         data = {
             "username": info.user_name,
-            "password": password,
+            "password": info.password,
             "appid": "otn"
         }
         response = self.session.post(login_url, data)
@@ -186,7 +239,7 @@ class Tickets(object):
         print("登录第二次验证...")
         login_second_verify_url = "https://kyfw.12306.cn/otn/uamauthclient"
         data = {
-            "tk":tk
+            "tk": tk
         }
         verify_result = self.session.post(login_second_verify_url, data).json()
         if verify_result["result_code"] == 0:
@@ -199,22 +252,27 @@ class Tickets(object):
     def check_user_login_status(self):
         retry_count = 0
         while True:
-            if retry_count > 3:
-                print("重试次数达3次，系统退出...")
-                sys.exit()
-
+            if retry_count >= 3:
+                print("登录失败")
+                return False
             print("检查用户登录状态...")
             check_user_url = "https://kyfw.12306.cn/otn/login/checkUser"
             data = {
                 "_json_att": ""
             }
             response = self.session.post(check_user_url, data).json()
-            if not response["data"]["flag"]:
-                print("用户未登录，开始登录...")
-                self.login()
+            if response['httpstatus'] == 200:
+                if not response["data"]["flag"]:
+                    print("用户未登录，开始登录...")
+                    self.login()
+                    retry_count += 1
+                    continue
+                else:
+                    return True
+            else:
+                print("检查用户登录状态失败...")
                 retry_count += 1
                 continue
-            break
 
     def submit_order_request(self):
         print("提交订单请求...")
@@ -225,16 +283,18 @@ class Tickets(object):
             "back_train_date": "2018-10-08",
             "tour_flag": "dc",
             "purpose_codes": "ADULT",
-            "query_from_station_name": info.from_station,
-            "query_to_station_name": info.to_station,
+            "query_from_station_name": self.station_map_reverse[self.select_train[6]],
+            "query_to_station_name": self.station_map_reverse[self.select_train[7]],
             "undefined": ""
         }
         response = self.session.post(submit_order_url, data).json()
         if response["status"]:
             print("订单请求提交成功")
+            return True
         else:
-            print("订单请求提交失败，系统退出...")
-            sys.exit()
+            print(response)
+            print("订单请求提交失败，退出...")
+            return False
 
     def get_submit_token(self):
         print("获取提交订单Token...")
@@ -249,9 +309,10 @@ class Tickets(object):
             print("获取提交订单Token成功")
             self.submit_token = token
             self.key_check_is_change = key
+            return True
         else:
-            print("获取提交订单Token失败，系统退出...")
-            sys.exit()
+            print("获取提交订单Token失败，退出...")
+            return False
 
     def get_passenger_list(self):
         print("获取乘客列表...")
@@ -264,9 +325,10 @@ class Tickets(object):
         if response["status"]:
             print("获取乘客列表成功")
             self.passenger_list = response["data"]["normal_passengers"]
+            return True
         else:
-            print("获取乘客列表失败，系统退出...")
-            sys.exit()
+            print("获取乘客列表失败，退出...")
+            return False
 
     def confirm_passengers(self):
         pass
@@ -280,9 +342,9 @@ class Tickets(object):
     def check_order_info(self):
         retry_count = 0
         while True:
-            if retry_count > 3:
-                print("重试次数达3次，系统退出...")
-                sys.exit()
+            if retry_count > 2:
+                print("重试次数达2次，退出...")
+                return False
 
             print("核对订单信息...")
             check_order_url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
@@ -299,8 +361,9 @@ class Tickets(object):
                             "mobile_no": p["mobile_no"]
                         }
                         passengers.append(passenger_info)
+                        print("已选择乘客：{}".format(passenger_info['passenger_name']))
+                        break
 
-            print("选择乘客：{}".format(passengers))
             for passenger_info in passengers:
                 self.passenger_ticket_str += "%s,%s,%s,%s,%s,%s,%s,N_" % (self.seat_code[info.seats[0]],
                                                                    passenger_info["passenger_flag"],
@@ -313,6 +376,7 @@ class Tickets(object):
                                                       passenger_info["passenger_id_type_code"],
                                                       passenger_info["passenger_id_no"],
                                                       passenger_info["passenger_type"])
+            # 去除最后一个下划线
             self.passenger_ticket_str = self.passenger_ticket_str[0:-1]
             data = {
                 "cancel_flag":"2",
@@ -328,7 +392,7 @@ class Tickets(object):
             response = self.session.post(check_order_url, data).json()
             if response["data"]["submitStatus"]:
                 print("核对订单信息完成")
-                break
+                return True
             else:
                 print("核对订单信息失败，开始重试...")
                 retry_count += 1
@@ -342,8 +406,8 @@ class Tickets(object):
             "train_no": self.select_train[2],
             "stationTrainCode": self.select_train[3],
             "seatType": self.seat_code[info.seats[0]],
-            "fromStationTelecode": self.station_map[info.from_station],
-            "toStationTelecode": self.station_map[info.to_station],
+            "fromStationTelecode": self.select_train[6],
+            "toStationTelecode": self.select_train[7],
             "leftTicket": self.select_train[12],
             "purpose_codes": "00",
             "train_location": self.select_train[15],
@@ -353,15 +417,17 @@ class Tickets(object):
         response = self.session.post(queue_count_url, data).json()
         if response["status"]:
             print("确认成功")
+            return True
         else:
             print("确认失败")
+            return False
 
     def confirm_order(self):
         retry_count = 0
         while True:
-            if retry_count > 5:
-                print("重试次数达5次，系统退出...")
-                sys.exit()
+            if retry_count > 6:
+                print("重试次数达6次，系统退出...")
+                return False
 
             print("提交订单...")
             confirm_order_url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
@@ -384,7 +450,7 @@ class Tickets(object):
             response = self.session.post(confirm_order_url, data).json()
             if response["data"]["submitStatus"]:
                 print("订单已提交")
-                break
+                return True
             else:
                 print("订单提交失败，开始重试...")
                 retry_count += 1
@@ -422,9 +488,9 @@ class Tickets(object):
     def query_order_result(self):
         retry_count = 0
         while True:
-            if retry_count > 3:
-                print("重试次数达3次，系统退出...")
-                sys.exit()
+            if retry_count > 10:
+                print("重试次数达10次，系统退出...")
+                return False
 
             print("查询订单处理结果...")
             order_result_url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
@@ -437,10 +503,10 @@ class Tickets(object):
             print(response)
             if response["data"]["submitStatus"]:
                 print("车票预订成功 订单号：{}".format(self.order_id))
-                break
+                return True
             elif response["status"]:
                 print("车票预订失败")
-                break
+                return False
             else:
                 print("车票预订查询失败，开始重试...")
                 retry_count += 1
@@ -448,55 +514,107 @@ class Tickets(object):
 
     def book(self):
 
-        self.check_user_login_status()
-        self.submit_order_request()
-        self.get_submit_token()
-        self.get_passenger_list()
-        self.check_order_info()
-        self.get_queue_count()
-        # self.confirm_order()
-        # self.query_order_wait_time()
-        # self.query_order_result()
+        delay_time = 0.1
+        res = self.check_user_login_status()
+        if not res:
+            return res
+
+        res = self.submit_order_request()
+        if not res:
+            return res
+
+        res = self.get_submit_token()
+        if not res:
+            return res
+
+        res = self.get_passenger_list()
+        if not res:
+            return res
+        time.sleep(delay_time)
+
+        res = self.check_order_info()
+        if not res:
+            return res
+
+        res = self.get_queue_count()
+        time.sleep(delay_time)
+        if not res:
+            return res
+
+        res = self.confirm_order()
+        if not res:
+            return res
+
+        self.query_order_wait_time()
+        self.query_order_result()
+
+        return res
 
     def filter(self, train_list):
+        # 过滤函数
         def filter_train(train_str):
             for train_num in info.trains:
                 if train_num in train_str:
                     return True
             return False
-        # 坐席优先
+        # 筛选符合条件的车次
         if not len(info.trains) == 0:
             train_list = list(filter(filter_train, train_list))
+        return self.further_filter(train_list)
+
+    def further_filter(self, train_list):
+        # 坐席优先
         for seat in info.seats:
             for train in train_list:
                 train_info = train.split("|")
+                print(train_info)
                 seat_info = train_info[self.seat_num[seat]]
-                if seat_info == '' or seat_info == '无':
+                if seat_info == '' or seat_info == '无' or seat_info == '0':
                     continue
                 else:
                     if seat_info == '有':
                         return train, seat
                     else:
-                        return train, seat
+                        # 暂时不支持部分提交
+                        if int(seat_info) >= len(info.passenger_names):
+                            return train, seat
+                        else:
+                            return '', ''
         return '', ''
 
     def grab(self):
+        duration = info.query_frequece
         retry_count = 0
         while True:
-            if retry_count > 3:
+            if retry_count > info.retry_count:
                 print("重试达上限，系统退出...")
                 sys.exit()
-            if self.query(info.from_station, info.to_station, info.date):
+            if self.query_tickets(info.from_station, info.to_station, info.date):
                 print('当前有票,   车次 {}   坐席 {}'.format(self.select_train[3], self.select_seat))
-                # self.book()
+                res = self.book()
+                if not res:
+                    time.sleep(duration)
+                    continue
                 break
             else:
                 print('查询无票，开始重试...')
                 retry_count += 1
-                time.sleep(1)
+                time.sleep(duration)
                 continue
+
+    def scheduled_book(self):
+        print("===> 等待抢票...")
+        start_time = datetime.datetime(info.assign_time[0], info.assign_time[1], info.assign_time[2], info.assign_time[3], info.assign_time[4], info.assign_time[5])
+        while datetime.datetime.now() < start_time:
+            time.sleep(1)
+        print('===> 开始抢票！！！')
+        self.grab()
 
 
 ticket = Tickets()
 ticket.get_stations()
-ticket.grab()
+ticket.login()
+if len(info.assign_time) == 0:
+    ticket.grab()
+else:
+    ticket.scheduled_book()

@@ -13,7 +13,7 @@
     余票查询
     ------------------------------------------------------------
     地址：    
-        https://kyfw.12306.cn/otn/leftTicket/queryO
+        https://kyfw.12306.cn/otn/leftTicket/queryA
     方式：
         GET
     参数： 
@@ -261,7 +261,7 @@
         REPEAT_SUBMIT_TOKEN                 = ad895d8d3d6c334ae835724b8f9a4830
     响应：
         status=true     成功
-        
+
     
     第八步：确认完整订单信息，提交进入订单队列
     ------------------------------------------------------------
@@ -301,7 +301,9 @@
         REPEAT_SUBMIT_TOKEN                 = 6398aa8b04876
     响应：
         queryOrderWaitTimeStatus=true   查询成功
-        waitTime                        剩余等待时间，-1表示处理完毕，订单已生成结果
+        waitTime                        剩余等待时间，
+                                        -1 表示处理完毕，订单已生成结果
+                                        -2 订票取消次数过多，当日无法订票
         orderId                         订单号，用于查询订单结果，waitTime=-1处理完毕才会生成
         
         
