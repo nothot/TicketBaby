@@ -409,6 +409,7 @@ class Tickets(object):
                 print("核对订单信息完成")
                 return True
             else:
+                print(response)
                 print("核对订单信息失败，开始重试...")
                 retry_count += 1
                 continue
@@ -434,7 +435,8 @@ class Tickets(object):
             print("确认成功")
             return True
         else:
-            print("确认失败")
+            print(response)
+            print("确认坐席失败")
             return False
 
     def confirm_order(self):
@@ -467,6 +469,7 @@ class Tickets(object):
                 print("订单已提交")
                 return True
             else:
+                print(response)
                 print("订单提交失败，开始重试...")
                 retry_count += 1
                 continue
