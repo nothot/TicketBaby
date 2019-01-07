@@ -10,6 +10,7 @@ import time
 import random
 import re
 import info
+import mail
 from PIL import Image
 from requests import urllib3
 import datetime
@@ -92,6 +93,7 @@ class Tickets(object):
                     res = self.query(from_s, to_s, date_d)
                     if res:
                         return True
+                    time.sleep(1)
         return False
 
     def query(self, from_station, to_station, train_date):
@@ -509,6 +511,7 @@ class Tickets(object):
                     break
                 elif wait_time == -2:
                     print_s("取消次数太多，今日无法订票...")
+                    print_s(response)
                     return False
                 else:
                     query_count += 1
@@ -534,6 +537,11 @@ class Tickets(object):
             print_s(response)
             if response["data"]["submitStatus"]:
                 print_s("车票预订成功 订单号：{}".format(self.order_id))
+                mail.send_email('车票预订成功，订单号: {}，车次: {} {}至{} 坐席: {}，请尽快登录12306支付^_^'.format(self.order_id,
+                                                                                            self.select_train[3],
+                                                                                            self.select_train[6],
+                                                                                            self.select_train[7],
+                                                                                            self.select_seat))
                 return True
             elif response["status"]:
                 print_s("车票预订失败")
@@ -547,7 +555,7 @@ class Tickets(object):
 
     def book(self):
 
-        delay_time = 0.1
+        delay_time = 1.0
         res = self.check_user_login_status()
         if not res:
             return res
