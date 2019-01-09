@@ -14,6 +14,7 @@ import mail
 from PIL import Image
 from requests import urllib3
 import datetime
+import threading
 
 
 def print_s(string):
@@ -87,13 +88,18 @@ class Tickets(object):
                 self.station_map_reverse[station_code] = station_name
 
     def query_tickets(self, from_station, to_station, train_date):
+        count = 0
         for date_d in train_date:
             for from_s in from_station:
                 for to_s in to_station:
+                    count += 1
                     res = self.query(from_s, to_s, date_d)
                     if res:
                         return True
-                    time.sleep(1)
+                    sleep_duration = 0.5
+                    if count % 2 == 0:
+                        sleep_duration = 1.0
+                    time.sleep(sleep_duration)
         return False
 
     def query(self, from_station, to_station, train_date):
@@ -187,7 +193,7 @@ class Tickets(object):
     def login_captcha_check(self):
         retry_count = 0
         while True:
-            if retry_count > 5:
+            if retry_count > 15:
                 print_s("重试次数达5次，系统退出...")
                 sys.exit()
 
@@ -227,6 +233,7 @@ class Tickets(object):
                 break
             else:
                 print_s("验证码校验失败，开始重试...")
+                time.sleep(0.5)
                 retry_count += 1
                 continue
 
@@ -655,10 +662,51 @@ class Tickets(object):
         print_s('===> 开始抢票！！！')
         self.grab()
 
+    def check_login(self):
+        print_s('检查登录状态...')
+        urls = ["https://kyfw.12306.cn/otn/queryOrder/queryMyOrderNoComplete",
+                "https://kyfw.12306.cn/otn/queryOrder/queryMyOrder"]
+        index = random.randint(0, 1)
+        url = urls[index]
+        data = {}
+        if index == 0:
+            data = {
+                "_json_att": ""
+            }
+        else:
+            data = {
+                "come_from_flag": "my_order",
+                "pageIndex": "0",
+                "pageSize": "8",
+                "query_where": "G",
+                "queryStartDate": "2018-12-11",
+                "queryEndDate": time.strftime('%Y-%m-%d', time.localtime(time.time())),
+                "queryType": "1",
+                "sequeue_train_name": ""
+            }
+        response = self.session.post(url, data).json()
+        print_s(response)
+        if ('status' in response.keys()) and response['status']:
+            print_s('登录状态正常...')
+            return
+        else:
+            self.check_user_login_status()
+
+    def login_timer(self):
+        self.check_login()
+        global timer
+        sleep_duration = random.randint(1, 30) * 60 + 20
+        timer = threading.Timer(sleep_duration, self.login_timer)
+        timer.start()
+
 
 ticket = Tickets()
 ticket.get_stations()
 ticket.login()
+
+timer = threading.Timer(300, ticket.login_timer)
+timer.start()
+
 if len(info.assign_time) == 0:
     ticket.grab()
 else:

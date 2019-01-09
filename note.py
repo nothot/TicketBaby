@@ -320,8 +320,46 @@
     响应：
         submitStatus=true   订单完成，车票预订成功
         
+        
+        
+    ************************************************************
+                            订单查询
+    ************************************************************
+    
+    查询未完成订单
+    ------------------------------------------------------------
+    地址:
+        https://kyfw.12306.cn/otn/queryOrder/queryMyOrderNoComplete
+    方式：
+        POST
+    参数：
+        _json_att  =
+    响应：
+        status = true   成功
+        
+    
+    查询未出行订单
+    ------------------------------------------------------------
+    地址：
+        https://kyfw.12306.cn/otn/queryOrder/queryMyOrder
+    方式：
+        POST
+    参数：
+        come_from_flag              = my_order
+        pageIndex                   = 0
+        pageSize                    = 8
+        query_where                 = G
+        queryStartDate              = 2018-12-11
+        queryEndDate                = 2019-01-09
+        queryType                   = 1
+        sequeue_train_name          =
+    响应：
+        status = true   成功
+
     """
 }
+
+
 
 {
     '''
