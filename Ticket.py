@@ -544,7 +544,8 @@ class Tickets(object):
             print_s(response)
             if response["data"]["submitStatus"]:
                 print_s("车票预订成功 订单号：{}".format(self.order_id))
-                mail.send_email('车票预订成功，订单号: {}，车次: {} {}至{} 坐席: {}，请尽快登录12306支付^_^'.format(self.order_id,
+                if info.mail_notification:
+                    mail.send_email('车票预订成功，订单号: {}，车次: {} {}至{} 坐席: {}，请尽快登录12306支付^_^'.format(self.order_id,
                                                                                             self.select_train[3],
                                                                                             self.select_train[6],
                                                                                             self.select_train[7],
